@@ -177,11 +177,13 @@ class LEMOSDashboard {
 
   async updateCurrentData() {
     try {
-      const response = await fetch(`/api/current/${this.currentArea}`)
+      const response = await fetch(`/api/readings?area_id=${this.currentArea}&hours=1`)
       const data = await response.json()
 
-      if (data && Object.keys(data).length > 0) {
-        this.updateReadings(data)
+      if (data && data.length > 0) {
+        // Get the most recent reading
+        const latestReading = data[0]
+        this.updateReadings(latestReading)
         this.updateConnectionStatus(true)
         this.lastUpdate = new Date()
         document.getElementById("last-update").textContent = `Last Update: ${this.lastUpdate.toLocaleTimeString()}`
@@ -196,12 +198,11 @@ class LEMOSDashboard {
   }
 
   updateReadings(data) {
-    // Update current readings
-    document.getElementById("mq4-value").textContent = `${(data.mq4_avg || 0).toFixed(1)} ppm`
-    document.getElementById("mq7-value").textContent = `${(data.mq7_avg || 0).toFixed(1)} ppm`
+    document.getElementById("mq4-value").textContent = `${(data.methane || 0).toFixed(1)} ppm`
+    document.getElementById("mq7-value").textContent = `${(data.co || 0).toFixed(1)} ppm`
     document.getElementById("temp-value").textContent = `${(data.temperature || 0).toFixed(1)} °C`
     document.getElementById("humidity-value").textContent = `${(data.humidity || 0).toFixed(1)} %`
-    document.getElementById("distance-value").textContent = `${(data.ultrasonic_distance || 0).toFixed(1)} cm`
+    document.getElementById("distance-value").textContent = `${(data.water_level || 0).toFixed(1)} cm`
     document.getElementById("soil-value").textContent = `${data.soil_moisture || 0}`
 
     // Update alert status based on readings
@@ -221,13 +222,12 @@ class LEMOSDashboard {
       el.classList.remove("warning", "danger")
     })
 
-    // Apply warning/danger classes
-    if (data.mq4_avg > 800) {
-      mq4Element.classList.add(data.mq4_avg > 1000 ? "danger" : "warning")
+    if (data.methane > 800) {
+      mq4Element.classList.add(data.methane > 1000 ? "danger" : "warning")
     }
 
-    if (data.mq7_avg > 30) {
-      mq7Element.classList.add(data.mq7_avg > 50 ? "danger" : "warning")
+    if (data.co > 30) {
+      mq7Element.classList.add(data.co > 50 ? "danger" : "warning")
     }
 
     if (data.temperature > 35) {
@@ -239,32 +239,31 @@ class LEMOSDashboard {
     const alertContainer = document.getElementById("alert-container")
     const alerts = []
 
-    // Check for alert conditions
-    if (data.mq4_avg > 1000) {
+    if (data.methane > 1000) {
       alerts.push({
         type: "danger",
         icon: "🚨",
-        text: `High methane detected: ${data.mq4_avg.toFixed(1)} ppm`,
+        text: `High methane detected: ${data.methane.toFixed(1)} ppm`,
       })
-    } else if (data.mq4_avg > 800) {
+    } else if (data.methane > 800) {
       alerts.push({
         type: "warning",
         icon: "⚠️",
-        text: `Elevated methane: ${data.mq4_avg.toFixed(1)} ppm`,
+        text: `Elevated methane: ${data.methane.toFixed(1)} ppm`,
       })
     }
 
-    if (data.mq7_avg > 50) {
+    if (data.co > 50) {
       alerts.push({
         type: "danger",
         icon: "🚨",
-        text: `High CO detected: ${data.mq7_avg.toFixed(1)} ppm`,
+        text: `High CO detected: ${data.co.toFixed(1)} ppm`,
       })
-    } else if (data.mq7_avg > 30) {
+    } else if (data.co > 30) {
       alerts.push({
         type: "warning",
         icon: "⚠️",
-        text: `Elevated CO: ${data.mq7_avg.toFixed(1)} ppm`,
+        text: `Elevated CO: ${data.co.toFixed(1)} ppm`,
       })
     }
 
@@ -300,14 +299,14 @@ class LEMOSDashboard {
 
   async updateHistoricalCharts() {
     try {
-      const response = await fetch(`/api/history/${this.currentArea}?hours=24`)
+      const response = await fetch(`/api/readings?area_id=${this.currentArea}&hours=24`)
       const data = await response.json()
 
       if (data && data.length > 0) {
         // Prepare data for charts
         const labels = data.map((d) => new Date(d.timestamp).toLocaleTimeString())
-        const mq4Data = data.map((d) => d.mq4_avg || 0)
-        const mq7Data = data.map((d) => d.mq7_avg || 0)
+        const mq4Data = data.map((d) => d.methane || 0)
+        const mq7Data = data.map((d) => d.co || 0)
         const tempData = data.map((d) => d.temperature || 0)
         const humidityData = data.map((d) => d.humidity || 0)
 
@@ -330,13 +329,13 @@ class LEMOSDashboard {
 
   async updateForecast() {
     try {
-      const response = await fetch(`/api/forecast/${this.currentArea}`)
+      const response = await fetch(`/api/forecast?area_id=${this.currentArea}&hours=48`)
       const data = await response.json()
 
-      if (data && data.forecasts) {
-        const labels = data.forecasts.map((f) => new Date(f.timestamp).toLocaleString())
-        const mq4Forecast = data.forecasts.map((f) => f.mq4_avg)
-        const mq7Forecast = data.forecasts.map((f) => f.mq7_avg)
+      if (data && data.length > 0) {
+        const labels = data.map((f) => new Date(f.timestamp).toLocaleString())
+        const mq4Forecast = data.map((f) => f.methane)
+        const mq7Forecast = data.map((f) => f.co)
 
         this.charts.forecast.data.labels = labels
         this.charts.forecast.data.datasets[0].data = mq4Forecast
