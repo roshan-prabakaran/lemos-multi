@@ -177,39 +177,108 @@ class LEMOSDashboard {
 
   async updateCurrentData() {
     try {
-      const response = await fetch(`/api/readings?area_id=${this.currentArea}&hours=1`)
-      const data = await response.json()
+      console.log("[v0] Fetching current data for area:", this.currentArea)
 
-      if (data && data.length > 0) {
+      let response, data
+
+      // First try the current endpoint
+      try {
+        response = await fetch(`/api/current/${this.currentArea}`)
+        if (response.ok) {
+          data = await response.json()
+          console.log("[v0] Current API response:", data)
+          if (data && Object.keys(data).length > 0) {
+            this.updateReadings(data)
+            this.updateConnectionStatus(true)
+            this.lastUpdate = new Date()
+            document.getElementById("last-update").textContent = `Last Update: ${this.lastUpdate.toLocaleTimeString()}`
+            await this.updateHistoricalCharts()
+            return
+          }
+        }
+      } catch (e) {
+        console.log("[v0] Current endpoint failed, trying readings endpoint")
+      }
+
+      // Fallback to readings endpoint
+      response = await fetch(`/api/readings?area_id=${this.currentArea}&hours=1`)
+      console.log("[v0] Readings API response status:", response.status)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      data = await response.json()
+      console.log("[v0] Readings API response data:", data)
+
+      if (data && Array.isArray(data) && data.length > 0) {
         // Get the most recent reading
         const latestReading = data[0]
+        console.log("[v0] Latest reading:", latestReading)
         this.updateReadings(latestReading)
         this.updateConnectionStatus(true)
         this.lastUpdate = new Date()
         document.getElementById("last-update").textContent = `Last Update: ${this.lastUpdate.toLocaleTimeString()}`
+      } else if (data && !Array.isArray(data)) {
+        // Handle single object response
+        console.log("[v0] Single object response:", data)
+        this.updateReadings(data)
+        this.updateConnectionStatus(true)
+        this.lastUpdate = new Date()
+        document.getElementById("last-update").textContent = `Last Update: ${this.lastUpdate.toLocaleTimeString()}`
+      } else {
+        console.log("[v0] No data received or empty array")
+        this.updateConnectionStatus(false)
       }
 
       // Update historical charts
       await this.updateHistoricalCharts()
     } catch (error) {
-      console.error("Error updating current data:", error)
+      console.error("[v0] Error updating current data:", error)
       this.updateConnectionStatus(false)
+
+      const alertContainer = document.getElementById("alert-container")
+      alertContainer.innerHTML = `
+        <div class="alert-item warning">
+          <span class="alert-icon">⚠️</span>
+          <span class="alert-text">Connection error: ${error.message}</span>
+        </div>
+      `
     }
   }
 
   updateReadings(data) {
-    document.getElementById("mq4-value").textContent = `${(data.methane || 0).toFixed(1)} ppm`
-    document.getElementById("mq7-value").textContent = `${(data.co || 0).toFixed(1)} ppm`
-    document.getElementById("temp-value").textContent = `${(data.temperature || 0).toFixed(1)} °C`
-    document.getElementById("humidity-value").textContent = `${(data.humidity || 0).toFixed(1)} %`
-    document.getElementById("distance-value").textContent = `${(data.water_level || 0).toFixed(1)} cm`
-    document.getElementById("soil-value").textContent = `${data.soil_moisture || 0}`
+    console.log("[v0] Updating readings with data:", data)
+
+    const methane = data.methane || data.mq4_avg || 0
+    const co = data.co || data.mq7_avg || 0
+    const temperature = data.temperature || data.temp || 0
+    const humidity = data.humidity || 0
+    const waterLevel = data.water_level || data.distance || 0
+    const soilMoisture = data.soil_moisture || 0
+
+    console.log("[v0] Processed values:", { methane, co, temperature, humidity, waterLevel, soilMoisture })
+
+    // Update DOM elements with fallback values
+    const mq4Element = document.getElementById("mq4-value")
+    const mq7Element = document.getElementById("mq7-value")
+    const tempElement = document.getElementById("temp-value")
+    const humidityElement = document.getElementById("humidity-value")
+    const distanceElement = document.getElementById("distance-value")
+    const soilElement = document.getElementById("soil-value")
+
+    if (mq4Element) mq4Element.textContent = `${methane.toFixed(1)} ppm`
+    if (mq7Element) mq7Element.textContent = `${co.toFixed(1)} ppm`
+    if (tempElement) tempElement.textContent = `${temperature.toFixed(1)} °C`
+    if (humidityElement) humidityElement.textContent = `${humidity.toFixed(1)} %`
+    if (distanceElement) distanceElement.textContent = `${waterLevel.toFixed(1)} cm`
+    if (soilElement) soilElement.textContent = `${soilMoisture}`
 
     // Update alert status based on readings
-    this.updateAlertStatus(data)
+    this.updateAlertStatus({ methane, co, temperature, humidity })
 
     // Apply warning/danger classes
-    this.applyReadingClasses(data)
+    this.applyReadingClasses({ methane, co, temperature })
   }
 
   applyReadingClasses(data) {
@@ -299,16 +368,30 @@ class LEMOSDashboard {
 
   async updateHistoricalCharts() {
     try {
+      console.log("[v0] Fetching historical data for area:", this.currentArea)
       const response = await fetch(`/api/readings?area_id=${this.currentArea}&hours=24`)
-      const data = await response.json()
 
-      if (data && data.length > 0) {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      console.log("[v0] Historical data received:", data?.length || 0, "records")
+
+      if (data && Array.isArray(data) && data.length > 0) {
+        const sortedData = data.slice(-20).reverse()
+
         // Prepare data for charts
-        const labels = data.map((d) => new Date(d.timestamp).toLocaleTimeString())
-        const mq4Data = data.map((d) => d.methane || 0)
-        const mq7Data = data.map((d) => d.co || 0)
-        const tempData = data.map((d) => d.temperature || 0)
-        const humidityData = data.map((d) => d.humidity || 0)
+        const labels = sortedData.map((d) => {
+          const date = new Date(d.timestamp)
+          return date.toLocaleTimeString()
+        })
+        const mq4Data = sortedData.map((d) => d.methane || d.mq4_avg || 0)
+        const mq7Data = sortedData.map((d) => d.co || d.mq7_avg || 0)
+        const tempData = sortedData.map((d) => d.temperature || d.temp || 0)
+        const humidityData = sortedData.map((d) => d.humidity || 0)
+
+        console.log("[v0] Chart data prepared:", { labels: labels.length, mq4Data: mq4Data.length })
 
         // Update gas chart
         this.charts.gas.data.labels = labels
@@ -321,9 +404,13 @@ class LEMOSDashboard {
         this.charts.env.data.datasets[0].data = tempData
         this.charts.env.data.datasets[1].data = humidityData
         this.charts.env.update()
+
+        console.log("[v0] Charts updated successfully")
+      } else {
+        console.log("[v0] No historical data available")
       }
     } catch (error) {
-      console.error("Error updating historical charts:", error)
+      console.error("[v0] Error updating historical charts:", error)
     }
   }
 
@@ -343,7 +430,7 @@ class LEMOSDashboard {
         this.charts.forecast.update()
       }
     } catch (error) {
-      console.error("Error updating forecast:", error)
+      console.error("[v0] Error updating forecast:", error)
     }
   }
 
