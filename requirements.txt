@@ -10,3 +10,4 @@ python-dotenv
 pip
 setuptools
 wheel
+gunicorn
