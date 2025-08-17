@@ -189,6 +189,43 @@ def system_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/current/<int:area_id>')
+def get_current_reading(area_id):
+    """Get current/latest reading for specific area"""
+    try:
+        # Get the most recent reading for this area
+        readings = db_manager.get_readings(hours=1, area_id=area_id)
+        
+        if not readings:
+            return jsonify({'error': 'No recent readings found'}), 404
+        
+        # Return the most recent reading
+        latest = readings[0]
+        return jsonify(latest)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/forecast/<int:area_id>')
+def get_area_forecast(area_id):
+    """Get forecast for specific area (alternative endpoint)"""
+    try:
+        hours = request.args.get('hours', 48, type=int)
+        
+        # Get historical data for forecasting
+        historical_data = db_manager.get_readings(hours=168, area_id=area_id)  # 1 week
+        
+        if len(historical_data) < 10:
+            return jsonify({'error': 'Insufficient historical data for forecasting'}), 400
+        
+        # Generate forecast
+        forecast = forecasting_model.predict(historical_data, hours=hours)
+        
+        return jsonify(forecast)
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def check_alerts(reading):
     """Check if reading exceeds thresholds and send alerts"""
     alerts = []
