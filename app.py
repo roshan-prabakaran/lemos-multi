@@ -9,7 +9,7 @@ from services.database import DatabaseManager
 from services.sms_service import SMSService
 from ml.forecasting import ForecastingModel
 from ingestion.data_processor import DataProcessor
-
+import os
 app = Flask(__name__)
 CORS(app)
 
